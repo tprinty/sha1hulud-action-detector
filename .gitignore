@@ -1,0 +1,7 @@
+node_modules/
+scan-results.json
+scan-results.md
+exfil-scan-results.json
+exfil-scan-results.md
+.env
+*.log

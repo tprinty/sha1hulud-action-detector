@@ -1,0 +1,206 @@
+name: Scan Organization for Shai-Hulud Compromised Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      org_name:
+        description: 'GitHub Organization name to scan'
+        required: true
+        type: string
+      scan_private_repos:
+        description: 'Include private repositories'
+        required: false
+        type: boolean
+        default: true
+      max_repos:
+        description: 'Maximum number of repos to scan (0 = unlimited)'
+        required: false
+        type: number
+        default: 0
+  schedule:
+    # Run daily at 6 AM UTC
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  # For scheduled runs, set your org name here
+  DEFAULT_ORG: ${{ vars.GITHUB_ORG_NAME || github.repository_owner }}
+
+jobs:
+  scan-repos:
+    name: Scan repositories for compromised packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run organization scanner
+        id: scan
+        env:
+          GITHUB_TOKEN: ${{ secrets.ORG_SCAN_TOKEN }}
+          ORG_NAME: ${{ inputs.org_name || env.DEFAULT_ORG }}
+          SCAN_PRIVATE: ${{ inputs.scan_private_repos }}
+          MAX_REPOS: ${{ inputs.max_repos || 0 }}
+        run: node scan-org.js
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-results-${{ github.run_id }}
+          path: |
+            scan-results.json
+            scan-results.md
+          retention-days: 90
+
+      - name: Create issues for findings
+        if: steps.scan.outputs.vulnerabilities_found == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ORG_SCAN_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('scan-results.json', 'utf8'));
+            const fullReport = fs.readFileSync('scan-results.md', 'utf8');
+            const orgName = results.organization;
+            const scanDate = new Date().toISOString().split('T')[0];
+            const createdIssues = [];
+
+            // Create issue on each affected repository
+            for (const repo of results.affectedRepos) {
+              const findings = repo.findings.map(f =>
+                `| \`${f.package}\` | \`${f.version}\` | ${f.dependencyType} | ${f.file} |`
+              ).join('\n');
+
+              const repoIssueBody = `## 🚨 Security Alert: Shai-Hulud Compromised Packages Detected
+
+This repository contains npm packages that were compromised in the **Shai-Hulud** supply chain attack (November 24, 2025).
+
+### Affected Packages
+
+| Package | Version | Type | File |
+|---------|---------|------|------|
+${findings}
+
+### What is Shai-Hulud?
+
+The Shai-Hulud attack compromised 1,000+ npm packages by injecting malicious code that:
+- Steals NPM tokens, AWS/GCP/Azure credentials, and environment variables
+- Uses TruffleHog to scan for secrets on your machine
+- Creates rogue GitHub Action runners named "SHA1HULUD"
+- Can propagate to other packages using stolen npm tokens
+
+### Immediate Actions Required
+
+1. **Do NOT run \`npm install\`** until packages are updated
+2. **Remove or update** the affected packages immediately
+3. **Rotate ALL credentials** that may have been exposed:
+   - NPM tokens
+   - GitHub Personal Access Tokens
+   - AWS/GCP/Azure credentials
+   - CI/CD secrets and environment variables
+4. **Audit GitHub Actions** for suspicious workflows (look for \`formatter_*.yml\`)
+5. **Check for rogue runners** named "SHA1HULUD" in your repository settings
+
+### Safe Versions
+
+Revert to versions published **before November 21, 2025**, or wait for maintainers to publish verified clean versions.
+
+### Reference
+
+- [HelixGuard Advisory](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)
+- [CISA Alert](https://www.cisa.gov/news-events/alerts/2025/09/23/widespread-supply-chain-compromise-impacting-npm-ecosystem)
+
+---
+*This issue was automatically created by the Shai-Hulud scanner on ${scanDate}*
+`;
+
+              try {
+                const issue = await github.rest.issues.create({
+                  owner: orgName,
+                  repo: repo.name,
+                  title: `🚨 SECURITY: Shai-Hulud Compromised Packages Detected`,
+                  body: repoIssueBody,
+                  labels: ['security', 'critical']
+                });
+                console.log(`Created issue #${issue.data.number} on ${orgName}/${repo.name}`);
+                createdIssues.push({
+                  repo: `${orgName}/${repo.name}`,
+                  issueNumber: issue.data.number,
+                  issueUrl: issue.data.html_url
+                });
+              } catch (error) {
+                console.log(`Failed to create issue on ${orgName}/${repo.name}: ${error.message}`);
+                createdIssues.push({
+                  repo: `${orgName}/${repo.name}`,
+                  error: error.message
+                });
+              }
+            }
+
+            // Create tracking issue on the scanner repository
+            const issueLinks = createdIssues
+              .filter(i => i.issueUrl)
+              .map(i => `- [${i.repo}#${i.issueNumber}](${i.issueUrl})`)
+              .join('\n');
+
+            const failedRepos = createdIssues
+              .filter(i => i.error)
+              .map(i => `- ${i.repo}: ${i.error}`)
+              .join('\n');
+
+            const trackingBody = `## 🚨 Shai-Hulud Scan Results - ${scanDate}
+
+### Summary
+
+- **Organization:** ${orgName}
+- **Repositories Scanned:** ${results.totalRepos}
+- **Repositories Affected:** ${results.affectedRepos.length}
+- **Total Vulnerabilities:** ${results.totalVulnerabilities}
+
+### Issues Created
+
+${issueLinks || '*No issues were created*'}
+
+${failedRepos ? `### Failed to Create Issues\n\n${failedRepos}` : ''}
+
+### Affected Repositories
+
+${results.affectedRepos.map(r => `- **${r.name}** (${r.visibility}): ${r.findings.length} compromised package(s)`).join('\n')}
+
+---
+
+<details>
+<summary>Full Scan Report</summary>
+
+${fullReport}
+
+</details>
+`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Shai-Hulud Scan: ${results.affectedRepos.length} repos affected - ${scanDate}`,
+              body: trackingBody,
+              labels: ['security', 'critical', 'shai-hulud', 'tracking']
+            });
+            console.log('Created tracking issue on scanner repository');
+
+      - name: Fail if vulnerabilities found
+        if: steps.scan.outputs.vulnerabilities_found == 'true'
+        run: |
+          echo "::error::Compromised packages detected! Check the scan results for details."
+          exit 1

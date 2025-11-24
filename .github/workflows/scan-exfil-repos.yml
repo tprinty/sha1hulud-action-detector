@@ -1,0 +1,273 @@
+name: Scan for Shai-Hulud Exfiltration Repositories
+
+on:
+  workflow_dispatch:
+    inputs:
+      org_name:
+        description: 'GitHub Organization name to scan'
+        required: true
+        type: string
+      scan_members:
+        description: 'Scan organization member public repos'
+        required: false
+        type: boolean
+        default: true
+  schedule:
+    # Run daily at 7 AM UTC (1 hour after package scan)
+    - cron: '0 7 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  DEFAULT_ORG: ${{ vars.GITHUB_ORG_NAME || github.repository_owner }}
+
+jobs:
+  scan-exfil-repos:
+    name: Scan for malware exfiltration repositories
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run exfiltration repo scanner
+        id: scan
+        env:
+          GITHUB_TOKEN: ${{ secrets.ORG_SCAN_TOKEN }}
+          ORG_NAME: ${{ inputs.org_name || env.DEFAULT_ORG }}
+          SCAN_MEMBERS: ${{ inputs.scan_members }}
+        run: node scan-exfil-repos.js
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exfil-scan-results-${{ github.run_id }}
+          path: |
+            exfil-scan-results.json
+            exfil-scan-results.md
+          retention-days: 90
+
+      - name: Create issues for findings
+        if: steps.scan.outputs.malware_repos_found == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ORG_SCAN_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('exfil-scan-results.json', 'utf8'));
+            const fullReport = fs.readFileSync('exfil-scan-results.md', 'utf8');
+            const orgName = results.organization;
+            const scanDate = new Date().toISOString().split('T')[0];
+
+            // Group by user
+            const userFindings = {};
+            for (const repo of results.malwareRepos) {
+              const owner = repo.repo.split('/')[0];
+              if (!userFindings[owner]) {
+                userFindings[owner] = [];
+              }
+              userFindings[owner].push(repo);
+            }
+
+            const notifiedUsers = [];
+            const failedNotifications = [];
+
+            // Try to notify each affected user by creating an issue on their profile repo
+            // or their most recently updated repo
+            for (const [username, repos] of Object.entries(userFindings)) {
+              // Check if this is an org member
+              const isOrgMember = repos.some(r => r.isOrgMember);
+
+              if (!isOrgMember) {
+                // Skip non-org members - just report them
+                continue;
+              }
+
+              const repoList = repos.map(r => {
+                const indicators = r.indicators.map(i =>
+                  `  - ${i.type}: \`${i.value || i.signature}\` (${i.severity})`
+                ).join('\n');
+                return `### ${r.repo}\n- **URL:** ${r.url}\n- **Created:** ${r.createdAt}\n- **Description:** ${r.description || 'None'}\n\n**Indicators:**\n${indicators}`;
+              }).join('\n\n');
+
+              const userIssueBody = `## 🚨 Security Alert: Potential Credential Theft Detected
+
+Your GitHub account appears to have repositories that were created by the **Shai-Hulud** malware. This malware steals credentials and creates repositories to exfiltrate the stolen data.
+
+### Suspicious Repositories Found
+
+${repoList}
+
+### What This Means
+
+If these repositories were not created by you intentionally:
+
+1. **Your credentials have likely been stolen**, including:
+   - GitHub tokens
+   - NPM tokens
+   - AWS/GCP/Azure credentials
+   - Environment variables and secrets
+
+2. **Your account may be compromised** - the malware may have:
+   - Created GitHub Action runners on your repos
+   - Published malicious npm packages using your tokens
+   - Accessed your cloud resources
+
+### Immediate Actions Required
+
+1. **Delete the suspicious repositories** listed above
+2. **Rotate ALL credentials immediately:**
+   - [Revoke GitHub tokens](https://github.com/settings/tokens)
+   - [Revoke NPM tokens](https://www.npmjs.com/settings/~/tokens)
+   - Rotate AWS/GCP/Azure credentials
+   - Change passwords for any services in your environment
+3. **Review GitHub Actions** for unauthorized runners
+4. **Check npm** for any packages published without your knowledge
+5. **Enable 2FA** if not already enabled
+6. **Review recent activity** on your GitHub account
+
+### Reference
+
+- [HelixGuard Advisory](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)
+- [CISA Alert](https://www.cisa.gov/news-events/alerts/2025/09/23/widespread-supply-chain-compromise-impacting-npm-ecosystem)
+
+---
+*This issue was automatically created by your organization's security scanner on ${scanDate}*
+`;
+
+              // Try to find a repo to create an issue on
+              try {
+                // First try the user's .github repo (profile repo)
+                let targetRepo = '.github';
+                let created = false;
+
+                try {
+                  await github.rest.repos.get({
+                    owner: username,
+                    repo: '.github'
+                  });
+                } catch {
+                  // No .github repo, try to find another repo
+                  const { data: userRepos } = await github.rest.repos.listForUser({
+                    username: username,
+                    type: 'public',
+                    sort: 'updated',
+                    per_page: 1
+                  });
+
+                  if (userRepos.length > 0) {
+                    targetRepo = userRepos[0].name;
+                  } else {
+                    throw new Error('No public repos found');
+                  }
+                }
+
+                const issue = await github.rest.issues.create({
+                  owner: username,
+                  repo: targetRepo,
+                  title: `🚨 SECURITY ALERT: Potential Credential Theft Detected`,
+                  body: userIssueBody,
+                  labels: ['security', 'critical']
+                });
+
+                console.log(`Created issue #${issue.data.number} on ${username}/${targetRepo}`);
+                notifiedUsers.push({
+                  user: username,
+                  repo: `${username}/${targetRepo}`,
+                  issueUrl: issue.data.html_url
+                });
+              } catch (error) {
+                console.log(`Failed to notify ${username}: ${error.message}`);
+                failedNotifications.push({
+                  user: username,
+                  error: error.message
+                });
+              }
+            }
+
+            // Create tracking issue on scanner repository
+            const affectedOrgMembers = Object.entries(userFindings)
+              .filter(([_, repos]) => repos.some(r => r.isOrgMember))
+              .map(([user, repos]) => `- **${user}**: ${repos.length} suspicious repo(s)`)
+              .join('\n');
+
+            const externalUsers = Object.entries(userFindings)
+              .filter(([_, repos]) => !repos.some(r => r.isOrgMember))
+              .map(([user, repos]) => `- **${user}**: ${repos.length} repo(s) found via search`)
+              .join('\n');
+
+            const notificationStatus = notifiedUsers.length > 0
+              ? notifiedUsers.map(n => `- [${n.user}](${n.issueUrl})`).join('\n')
+              : '*No users were notified*';
+
+            const failedStatus = failedNotifications.length > 0
+              ? failedNotifications.map(f => `- ${f.user}: ${f.error}`).join('\n')
+              : '';
+
+            const trackingBody = `## 🚨 Shai-Hulud Exfiltration Repo Scan - ${scanDate}
+
+### Summary
+
+- **Organization:** ${orgName}
+- **Members Scanned:** ${results.membersScanned}
+- **Malware Repos Found:** ${results.malwareRepos.length}
+
+### Affected Organization Members
+
+${affectedOrgMembers || '*None*'}
+
+### External Users (found via GitHub search)
+
+${externalUsers || '*None*'}
+
+### User Notifications
+
+${notificationStatus}
+
+${failedStatus ? `### Failed Notifications\n\n${failedStatus}` : ''}
+
+---
+
+<details>
+<summary>Full Scan Report</summary>
+
+${fullReport}
+
+</details>
+
+---
+
+### Recommended Actions
+
+1. **Contact affected users** directly to ensure they are aware
+2. **Review organization secrets** that may have been accessed
+3. **Audit organization-wide GitHub Actions** for suspicious activity
+4. **Consider requiring 2FA** for all organization members
+5. **Report malware repos** to GitHub: https://github.com/contact/report-abuse
+`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Exfil Scan: ${results.malwareRepos.length} malware repos found - ${scanDate}`,
+              body: trackingBody,
+              labels: ['security', 'critical', 'shai-hulud', 'exfiltration', 'tracking']
+            });
+            console.log('Created tracking issue on scanner repository');
+
+      - name: Fail if malware repos found
+        if: steps.scan.outputs.malware_repos_found == 'true'
+        run: |
+          echo "::error::Malware exfiltration repositories detected! Check the scan results for details."
+          exit 1

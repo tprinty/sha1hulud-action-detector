@@ -1,0 +1,23 @@
+{
+  "name": "sha1hulud-action-detector",
+  "version": "1.0.0",
+  "description": "GitHub Action to scan organization repositories for Shai-Hulud compromised npm packages",
+  "main": "scan-org.js",
+  "scripts": {
+    "scan": "node scan-org.js",
+    "update-packages": "node scripts/update-packages.js"
+  },
+  "keywords": [
+    "security",
+    "npm",
+    "supply-chain",
+    "shai-hulud",
+    "github-action",
+    "vulnerability-scanner"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
