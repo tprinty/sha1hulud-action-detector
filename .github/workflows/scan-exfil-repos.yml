@@ -103,48 +103,48 @@ jobs:
 
               const userIssueBody = `## 🚨 Security Alert: Potential Credential Theft Detected
 
-Your GitHub account appears to have repositories that were created by the **Shai-Hulud** malware. This malware steals credentials and creates repositories to exfiltrate the stolen data.
+            Your GitHub account appears to have repositories that were created by the **Shai-Hulud** malware. This malware steals credentials and creates repositories to exfiltrate the stolen data.
 
-### Suspicious Repositories Found
+            ### Suspicious Repositories Found
 
-${repoList}
+            ${repoList}
 
-### What This Means
+            ### What This Means
 
-If these repositories were not created by you intentionally:
+            If these repositories were not created by you intentionally:
 
-1. **Your credentials have likely been stolen**, including:
-   - GitHub tokens
-   - NPM tokens
-   - AWS/GCP/Azure credentials
-   - Environment variables and secrets
+            1. **Your credentials have likely been stolen**, including:
+               - GitHub tokens
+               - NPM tokens
+               - AWS/GCP/Azure credentials
+               - Environment variables and secrets
 
-2. **Your account may be compromised** - the malware may have:
-   - Created GitHub Action runners on your repos
-   - Published malicious npm packages using your tokens
-   - Accessed your cloud resources
+            2. **Your account may be compromised** - the malware may have:
+               - Created GitHub Action runners on your repos
+               - Published malicious npm packages using your tokens
+               - Accessed your cloud resources
 
-### Immediate Actions Required
+            ### Immediate Actions Required
 
-1. **Delete the suspicious repositories** listed above
-2. **Rotate ALL credentials immediately:**
-   - [Revoke GitHub tokens](https://github.com/settings/tokens)
-   - [Revoke NPM tokens](https://www.npmjs.com/settings/~/tokens)
-   - Rotate AWS/GCP/Azure credentials
-   - Change passwords for any services in your environment
-3. **Review GitHub Actions** for unauthorized runners
-4. **Check npm** for any packages published without your knowledge
-5. **Enable 2FA** if not already enabled
-6. **Review recent activity** on your GitHub account
+            1. **Delete the suspicious repositories** listed above
+            2. **Rotate ALL credentials immediately:**
+               - [Revoke GitHub tokens](https://github.com/settings/tokens)
+               - [Revoke NPM tokens](https://www.npmjs.com/settings/~/tokens)
+               - Rotate AWS/GCP/Azure credentials
+               - Change passwords for any services in your environment
+            3. **Review GitHub Actions** for unauthorized runners
+            4. **Check npm** for any packages published without your knowledge
+            5. **Enable 2FA** if not already enabled
+            6. **Review recent activity** on your GitHub account
 
-### Reference
+            ### Reference
 
-- [HelixGuard Advisory](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)
-- [CISA Alert](https://www.cisa.gov/news-events/alerts/2025/09/23/widespread-supply-chain-compromise-impacting-npm-ecosystem)
+            - [HelixGuard Advisory](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)
+            - [CISA Alert](https://www.cisa.gov/news-events/alerts/2025/09/23/widespread-supply-chain-compromise-impacting-npm-ecosystem)
 
----
-*This issue was automatically created by your organization's security scanner on ${scanDate}*
-`;
+            ---
+            *This issue was automatically created by your organization's security scanner on ${scanDate}*
+            `;
 
               // Try to find a repo to create an issue on
               try {
@@ -217,45 +217,45 @@ If these repositories were not created by you intentionally:
 
             const trackingBody = `## 🚨 Shai-Hulud Exfiltration Repo Scan - ${scanDate}
 
-### Summary
+            ### Summary
 
-- **Organization:** ${orgName}
-- **Members Scanned:** ${results.membersScanned}
-- **Malware Repos Found:** ${results.malwareRepos.length}
+            - **Organization:** ${orgName}
+            - **Members Scanned:** ${results.membersScanned}
+            - **Malware Repos Found:** ${results.malwareRepos.length}
 
-### Affected Organization Members
+            ### Affected Organization Members
 
-${affectedOrgMembers || '*None*'}
+            ${affectedOrgMembers || '*None*'}
 
-### External Users (found via GitHub search)
+            ### External Users (found via GitHub search)
 
-${externalUsers || '*None*'}
+            ${externalUsers || '*None*'}
 
-### User Notifications
+            ### User Notifications
 
-${notificationStatus}
+            ${notificationStatus}
 
-${failedStatus ? `### Failed Notifications\n\n${failedStatus}` : ''}
+            ${failedStatus ? `### Failed Notifications\n\n${failedStatus}` : ''}
 
----
+            ---
 
-<details>
-<summary>Full Scan Report</summary>
+            <details>
+            <summary>Full Scan Report</summary>
 
-${fullReport}
+            ${fullReport}
 
-</details>
+            </details>
 
----
+            ---
 
-### Recommended Actions
+            ### Recommended Actions
 
-1. **Contact affected users** directly to ensure they are aware
-2. **Review organization secrets** that may have been accessed
-3. **Audit organization-wide GitHub Actions** for suspicious activity
-4. **Consider requiring 2FA** for all organization members
-5. **Report malware repos** to GitHub: https://github.com/contact/report-abuse
-`;
+            1. **Contact affected users** directly to ensure they are aware
+            2. **Review organization secrets** that may have been accessed
+            3. **Audit organization-wide GitHub Actions** for suspicious activity
+            4. **Consider requiring 2FA** for all organization members
+            5. **Report malware repos** to GitHub: https://github.com/contact/report-abuse
+            `;
 
             await github.rest.issues.create({
               owner: context.repo.owner,
