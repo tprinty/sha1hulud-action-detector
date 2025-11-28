@@ -86,46 +86,46 @@ jobs:
 
               const repoIssueBody = `## 🚨 Security Alert: Shai-Hulud Compromised Packages Detected
 
-This repository contains npm packages that were compromised in the **Shai-Hulud** supply chain attack (November 24, 2025).
+            This repository contains npm packages that were compromised in the **Shai-Hulud** supply chain attack (November 24, 2025).
 
-### Affected Packages
+            ### Affected Packages
 
-| Package | Version | Type | File |
-|---------|---------|------|------|
-${findings}
+            | Package | Version | Type | File |
+            |---------|---------|------|------|
+            ${findings}
 
-### What is Shai-Hulud?
+            ### What is Shai-Hulud?
 
-The Shai-Hulud attack compromised 1,000+ npm packages by injecting malicious code that:
-- Steals NPM tokens, AWS/GCP/Azure credentials, and environment variables
-- Uses TruffleHog to scan for secrets on your machine
-- Creates rogue GitHub Action runners named "SHA1HULUD"
-- Can propagate to other packages using stolen npm tokens
+            The Shai-Hulud attack compromised 1,000+ npm packages by injecting malicious code that:
+            - Steals NPM tokens, AWS/GCP/Azure credentials, and environment variables
+            - Uses TruffleHog to scan for secrets on your machine
+            - Creates rogue GitHub Action runners named "SHA1HULUD"
+            - Can propagate to other packages using stolen npm tokens
 
-### Immediate Actions Required
+            ### Immediate Actions Required
 
-1. **Do NOT run \`npm install\`** until packages are updated
-2. **Remove or update** the affected packages immediately
-3. **Rotate ALL credentials** that may have been exposed:
-   - NPM tokens
-   - GitHub Personal Access Tokens
-   - AWS/GCP/Azure credentials
-   - CI/CD secrets and environment variables
-4. **Audit GitHub Actions** for suspicious workflows (look for \`formatter_*.yml\`)
-5. **Check for rogue runners** named "SHA1HULUD" in your repository settings
+            1. **Do NOT run \`npm install\`** until packages are updated
+            2. **Remove or update** the affected packages immediately
+            3. **Rotate ALL credentials** that may have been exposed:
+               - NPM tokens
+               - GitHub Personal Access Tokens
+               - AWS/GCP/Azure credentials
+               - CI/CD secrets and environment variables
+            4. **Audit GitHub Actions** for suspicious workflows (look for \`formatter_*.yml\`)
+            5. **Check for rogue runners** named "SHA1HULUD" in your repository settings
 
-### Safe Versions
+            ### Safe Versions
 
-Revert to versions published **before November 21, 2025**, or wait for maintainers to publish verified clean versions.
+            Revert to versions published **before November 21, 2025**, or wait for maintainers to publish verified clean versions.
 
-### Reference
+            ### Reference
 
-- [HelixGuard Advisory](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)
-- [CISA Alert](https://www.cisa.gov/news-events/alerts/2025/09/23/widespread-supply-chain-compromise-impacting-npm-ecosystem)
+            - [HelixGuard Advisory](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)
+            - [CISA Alert](https://www.cisa.gov/news-events/alerts/2025/09/23/widespread-supply-chain-compromise-impacting-npm-ecosystem)
 
----
-*This issue was automatically created by the Shai-Hulud scanner on ${scanDate}*
-`;
+            ---
+            *This issue was automatically created by the Shai-Hulud scanner on ${scanDate}*
+            `;
 
               try {
                 const issue = await github.rest.issues.create({
@@ -163,32 +163,32 @@ Revert to versions published **before November 21, 2025**, or wait for maintaine
 
             const trackingBody = `## 🚨 Shai-Hulud Scan Results - ${scanDate}
 
-### Summary
+            ### Summary
 
-- **Organization:** ${orgName}
-- **Repositories Scanned:** ${results.totalRepos}
-- **Repositories Affected:** ${results.affectedRepos.length}
-- **Total Vulnerabilities:** ${results.totalVulnerabilities}
+            - **Organization:** ${orgName}
+            - **Repositories Scanned:** ${results.totalRepos}
+            - **Repositories Affected:** ${results.affectedRepos.length}
+            - **Total Vulnerabilities:** ${results.totalVulnerabilities}
 
-### Issues Created
+            ### Issues Created
 
-${issueLinks || '*No issues were created*'}
+            ${issueLinks || '*No issues were created*'}
 
-${failedRepos ? `### Failed to Create Issues\n\n${failedRepos}` : ''}
+            ${failedRepos ? `### Failed to Create Issues\n\n${failedRepos}` : ''}
 
-### Affected Repositories
+            ### Affected Repositories
 
-${results.affectedRepos.map(r => `- **${r.name}** (${r.visibility}): ${r.findings.length} compromised package(s)`).join('\n')}
+            ${results.affectedRepos.map(r => `- **${r.name}** (${r.visibility}): ${r.findings.length} compromised package(s)`).join('\n')}
 
----
+            ---
 
-<details>
-<summary>Full Scan Report</summary>
+            <details>
+            <summary>Full Scan Report</summary>
 
-${fullReport}
+            ${fullReport}
 
-</details>
-`;
+            </details>
+            `;
 
             await github.rest.issues.create({
               owner: context.repo.owner,
